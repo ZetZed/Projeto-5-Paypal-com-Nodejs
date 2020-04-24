@@ -123,9 +123,179 @@ app.get("/final", (req, res) => {
 });
 
 
-//CRIAÇÃO DE PLANOS
+//ROTA 4 - CRIAÇÃO DE PLANOS
+app.get("/create", (req, res) => {
+    var plan = {
+            "name": "Plano Prata",
+            "description": "Um plano bem barato e muito bom!",
+            "merchant_preferences": {
+                "auto_bill_amount": "yes",
+                "cancel_url": "http://www.cancel.com",
+                "initial_fail_amount_action": "continue",
+                "max_fail_attempts": "1",
+                "return_url": "http://www.success.com",
+                "setup_fee": {
+                    "currency": "BRL",
+                    "value": "0"
+                }
+            },
+
+            "payment_definitions": [{
+                    //Plano TRIAL - 7 dias com valor R$0,00
+                    "amount": {
+                        "currency": "BRL",
+                        "value": "0"
+                    },
+                    "cycles": "7",
+                    "frequency": "DAY",
+                    "frequency_interval": "1",
+                    "name": "Teste gratis",
+                    "type": "TRIAL"
+                },
+                { //Plano Normal
+                    "amount": {
+                        "currency": "BRL",
+                        "value": "24"
+                    },
+                    "cycles": "0", //Deixou 0 pq o tipo de plano esta como INFINITE..
+                    "frequency": "MONTH",
+                    "frequency_interval": "1",
+                    "name": "Regular Prata",
+                    "type": "REGULAR"
+
+                }
+            ],
+            //Tipo do Plano
+            "type": "INFINITE" //FIXE ou INFINITE - se plano for INFINITE não acaba enquanto cliente não cancelar..... 
+        }
+        //Para Criar mesmo o plano...
+    paypal.billingPlan.create(plan, (erro, plan) => {
+        if (erro) {
+            console.log(erro)
+        } else {
+            console.log(plan);
+            res.json(plan);
+        }
+    });
+});
+
+//ROTA 5 - LISTAGEM DE PLANOS..
+app.get("/list", (req, res) => {
+    paypal.billingPlan.list({ 'status': 'ACTIVE' }, (error, plans) => {
+        if (error) {
+            console.log(error)
+        } else {
+            res.json(plans);
+        }
+    })
+});
+
+//ROTA 6 - QUANDO FOR ATUALIZAR PLANOS
+app.get("/active/:id", (req, res) => {
+    var mudancas = [{
+        "op": "replace",
+        "path": "/",
+        "value": {
+            "state": "ACTIVE"
+        }
+    }]
+
+    paypal.billingPlan.update(req.params.id, mudancas, (erro, result) => {
+        if (erro) {
+            console.log(erro)
+        }
+        res.send("Mudança feita!")
+
+    })
+});
 
 
+//ROTA 7 - Assinatura do cliente no plano..
+app.post("/sub", (req, res) => {
+    var email = req.body.email;
+    var idDoPlano = "P-6RH854333C992140VVJSBTSA";
+
+    var isoDate = new Date(Date.now());
+    isoDate.setSeconds(isoDate.getSeconds() + 4);
+    isoDate.toISOString().slice(0, 19) + 'Z';
+
+    var dadosDaAssinatura = {
+            "name": "Assinatura do Plano Prata",
+            "description": "Plano Prata Apenas R$25/mês",
+            "start_date": isoDate,
+            "payer": {
+                "payment_method": "paypal"
+            },
+            "plan": {
+                "id": idDoPlano
+            },
+            "override_merchant_preferences": {
+                "return_url": `http://localhost:45567/subreturn?email=${email}`, //ROTA 8,
+                "cancel_url": "https://example.com/cancel"
+            }
+        }
+        //Pagamento da Assinatura
+    paypal.billingAgreement.create(dadosDaAssinatura, (erro, assinatura) => {
+        if (erro) {
+            console.log(erro);
+        } else {
+            res.json(assinatura);
+        }
+    });
+});
+
+
+//ROTA 8 - Rota de retorno
+app.get("/subreturn", (req, res) => {
+    var email = req.query.email;
+    var token = req.query.token;
+
+    paypal.billingAgreement.execute(token, {}, (erro, assinatura) => {
+        if (erro) {
+            console.log(erro)
+        } else {
+            res.json(assinatura);
+            //TabelaClientes.Find(email).AddPlan(assinatura.id);//Para salvar no plano do cliente o id da assinatura..
+        }
+    });
+
+
+    /*
+    if(pagamentoConcluido){
+        TabelaDeClientes.Find(email).AddPlano(PlanoPrata)
+    }*/
+
+});
+
+
+//ROTA 9 - LISTA/DETALHES DA ASSINATURA
+app.get("/info/:id", (req, res) => {
+    var id = req.params.id;
+
+    paypal.billingAgreement.get(id, (erro, assinatura) => {
+        if (erro) {
+            console.log(erro);
+        } else {
+            res.json(assinatura);
+        }
+    })
+});
+
+//ROTA 10 - Cancelar Assinatura (precisa saber id da Assinatura)
+app.get("/cancel/:id", (req, res) => {
+    var id = req.params.id;
+
+    paypal.billingAgreement.cancel(id, { "note": "O cliente pediu para cancelar!" }, (erro, response) => {
+        if (erro) {
+            console.log(erro);
+        } else {
+            res.send("Assinatura cancelada!");
+        }
+    })
+});
+
+
+//SERVIDOR
 app.listen(45567, () => {
     console.log("Running!")
 })
